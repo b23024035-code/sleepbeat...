@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SleepBeat (SleepBeat) - 寝起き心拍・睡眠判定</title>
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Japanese Google Font (Noto Sans JP / Plus Jakarta Sans) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Plus+Jakarta+Sans:wght@600;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        night: {
+                            900: '#0c1017',
+                            800: '#121826',
+                            700: '#1c2436',
+                            600: '#2a364f'
+                        },
+                        heart: '#ff4757',
+                        emeraldAccent: '#2ed573',
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans JP', 'Plus Jakarta Sans', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #0c1017;
+            color: #f1f5f9;
+        }
+        .glass-panel {
+            background: rgba(18, 24, 38, 0.75);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0c1017;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a364f;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-rose-500 selection:text-white">
+
+    <header class="w-full border-b border-gray-800 bg-night-900/90 sticky top-0 z-40 backdrop-blur-md">
+        <div class="max-w-3xl mx-auto px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="showView('setupView')">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center shadow-lg shadow-rose-500/20">
+                    <i class="fa-solid fa-heart-pulse text-white text-xl animate-pulse"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-base leading-none tracking-wide text-white">SleepBeat</h1>
+                    <p class="text-[11px] text-gray-400 mt-1 font-medium">寝起き心拍でチェックする睡眠の質</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button id="navHistoryBtn" class="glass-card text-gray-300 hover:text-white px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-clock-rotate-left text-rose-400"></i> 測定履歴
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto w-full px-4 py-6 flex-grow flex flex-col justify-center">
+
+        <!-- VIEW 1: ホーム・計測準備画面 -->
+        <section id="setupView" class="space-y-6">
+            <!-- Hero Card -->
+            <div class="glass-panel p-6 sm:p-8 rounded-3xl relative overflow-hidden text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-6 shadow-2xl">
+                <div class="relative z-10 space-y-3 max-w-md">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                        <i class="fa-solid fa-moon"></i> 今朝の自律神経リカバリー診断
+                    </span>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-tight">
+                        目が覚めたら、10秒で睡眠の質を測定
+                    </h2>
+                    <p class="text-gray-400 text-xs sm:text-sm leading-relaxed">
+                        起き抜けに指先をカメラにかざすだけ。安眠時に下がる「安静時心拍数」の変化から、昨夜の疲労回復度を判定します。
+                    </p>
+                </div>
+                
+                <!-- Baseline Setting Input -->
+                <div class="glass-panel p-4 rounded-2xl w-full sm:w-auto min-w-[220px] text-center border-rose-500/20 bg-rose-950/10 shrink-0">
+                    <label class="block text-xs font-bold text-gray-300 mb-1">あなたの平常心拍数 (ベースライン)</label>
+                    <p class="text-[10px] text-gray-400 mb-2">普段の安静時心拍数を設定</p>
+                    <div class="flex items-center justify-center gap-3">
+                        <button id="decreaseBpm" class="w-9 h-9 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-extrabold text-lg flex items-center justify-center transition active:scale-95">-</button>
+                        <span id="baselineBpmDisplay" class="text-3xl font-black text-rose-400 min-w-[55px]">60</span>
+                        <span class="text-xs text-gray-400 font-bold">BPM</span>
+                        <button id="increaseBpm" class="w-9 h-9 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-extrabold text-lg flex items-center justify-center transition active:scale-95">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Guide Steps -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="glass-panel p-4 rounded-2xl flex items-start space-x-3.5">
+                    <div class="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-sm shrink-0">①</div>
+                    <div>
+                        <h4 class="font-bold text-sm text-gray-100">カメラに指を当てる</h4>
+                        <p class="text-xs text-gray-400 mt-1 leading-relaxed">スマホやPCのカメラレンズを指の腹で隙間なく優しく覆います。</p>
+                    </div>
+                </div>
+                <div class="glass-panel p-4 rounded-2xl flex items-start space-x-3.5">
+                    <div class="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-sm shrink-0">②</div>
+                    <div>
+                        <h4 class="font-bold text-sm text-gray-100">10秒間動かない</h4>
+                        <p class="text-xs text-gray-400 mt-1 leading-relaxed">光の透過による皮膚色の微小な赤色変化から脈波（BPM）を抽出します。</p>
+                    </div>
+                </div>
+                <div class="glass-panel p-4 rounded-2xl flex items-start space-x-3.5">
+                    <div class="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-sm shrink-0">③</div>
+                    <div>
+                        <h4 class="font-bold text-sm text-gray-100">睡眠の質を確認</h4>
+                        <p class="text-xs text-gray-400 mt-1 leading-relaxed">平常時との差分から自律神経の回復状態と今日のアドバイスを表示します。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Start Button -->
+            <div class="text-center pt-2">
+                <button id="startScanBtn" class="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:opacity-95 text-white font-extrabold rounded-2xl shadow-xl shadow-rose-600/30 transition-all text-base flex items-center justify-center gap-3 mx-auto active:scale-95">
+                    <i class="fa-solid fa-fingerprint text-xl"></i> 今朝の心拍数を測定する (10秒)
+                </button>
+            </div>
+        </section>
+
+        <!-- VIEW 2: カメラ計測中画面 -->
+        <section id="scannerView" class="hidden space-y-6">
+            <div class="glass-panel p-6 sm:p-8 rounded-3xl max-w-md mx-auto text-center relative overflow-hidden shadow-2xl">
+                <!-- Status Header -->
+                <div class="flex items-center justify-between mb-4">
+                    <span id="scanStatusBadge" class="px-3 py-1 rounded-full text-xs font-bold bg-gray-800 text-gray-300 flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span> カメラを起動中...
+                    </span>
+                    <button id="cancelScanBtn" class="text-xs text-gray-400 hover:text-white px-2.5 py-1 rounded-lg glass-card transition">
+                        <i class="fa-solid fa-xmark"></i> キャンセル
+                    </button>
+                </div>
+
+                <!-- Video / Finger Placement Visual -->
+                <div class="relative w-44 h-44 mx-auto my-4 rounded-full p-2 bg-gradient-to-tr from-rose-500 to-amber-400 shadow-2xl flex items-center justify-center overflow-hidden">
+                    <div class="w-full h-full rounded-full overflow-hidden relative bg-black flex items-center justify-center">
+                        <video id="webcamVideo" class="absolute w-full h-full object-cover transform scale-125 opacity-70" playsinline></video>
+                        <!-- Pulsing Heart Rate Feedback Overlay -->
+                        <div id="heartOverlay" class="absolute inset-0 bg-rose-600/30 opacity-0 transition-opacity duration-150 flex items-center justify-center">
+                            <i id="pulsingHeartIcon" class="fa-solid fa-heart text-5xl text-rose-500 filter drop-shadow-lg transition-transform duration-100"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-time PPG Canvas Graph -->
+                <div class="bg-night-900/90 rounded-2xl p-3 border border-gray-800 mb-4">
+                    <div class="flex justify-between items-center text-[11px] font-semibold text-gray-400 mb-1 px-1">
+                        <span>脈拍波形 (rPPGリアルタイム検出)</span>
+                        <span id="signalQualityText" class="text-emerald-400">信号: 確認中</span>
+                    </div>
+                    <canvas id="ppgCanvas" class="w-full h-16 rounded-lg bg-black/50"></canvas>
+                </div>
+
+                <!-- Countdown & Progress Bar -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-baseline text-sm">
+                        <span class="text-gray-400 font-medium">計測完了まで</span>
+                        <span id="countdownText" class="text-3xl font-black text-rose-400">10秒</span>
+                    </div>
+                    <div class="w-full bg-gray-800 h-3 rounded-full overflow-hidden p-0.5">
+                        <div id="scanProgressBar" class="bg-gradient-to-r from-rose-500 to-amber-400 h-full w-0 rounded-full transition-all duration-200"></div>
+                    </div>
+                </div>
+
+                <!-- Guidance Message -->
+                <p id="scanGuideMsg" class="text-xs font-medium text-gray-300 mt-4 min-h-[32px] flex items-center justify-center bg-gray-900/40 rounded-xl p-2">
+                    レンズ全体を指の腹でやさしく覆ってください。
+                </p>
+            </div>
+        </section>
+
+        <!-- VIEW 3: 睡眠の質 診断結果表示 -->
+        <section id="resultView" class="hidden space-y-6">
+            <div class="glass-panel p-6 sm:p-8 rounded-3xl relative overflow-hidden shadow-2xl">
+                <!-- Header Score Card -->
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-gray-800 pb-6">
+                    <div class="text-center sm:text-left">
+                        <span class="text-xs font-bold text-gray-400">今朝のコンディション診断結果</span>
+                        <h2 class="text-2xl sm:text-3xl font-black mt-1 text-white" id="resSleepGradeTitle">最高の睡眠 (超回復)</h2>
+                        <p class="text-xs text-gray-400 mt-1" id="resTimestamp">計測日時: 今日 07:15</p>
+                    </div>
+
+                    <div id="resBadgeContainer" class="flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
+                        <div id="resStarDisplay" class="text-2xl font-black text-emerald-400">★★★★★</div>
+                        <div class="text-left">
+                            <div id="resGradeStatus" class="text-xs font-extrabold text-gray-200">回復度: 最高 (Sランク)</div>
+                            <div id="resBpmDiffText" class="text-[11px] font-medium text-emerald-300">平常時より -3 BPM</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Metrics Breakdown -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3.5 my-6">
+                    <div class="bg-night-800/90 p-4 rounded-2xl border border-gray-800 text-center">
+                        <span class="text-xs text-gray-400 font-semibold block">今朝の測定心拍</span>
+                        <div class="text-3xl font-black text-rose-400 mt-1 flex items-center justify-center gap-1">
+                            <span id="resMeasuredBpm">58</span> <span class="text-xs text-gray-500 font-bold">BPM</span>
+                        </div>
+                    </div>
+                    <div class="bg-night-800/90 p-4 rounded-2xl border border-gray-800 text-center">
+                        <span class="text-xs text-gray-400 font-semibold block">平常時ベースライン</span>
+                        <div class="text-3xl font-black text-gray-300 mt-1 flex items-center justify-center gap-1">
+                            <span id="resBaselineBpm">60</span> <span class="text-xs text-gray-500 font-bold">BPM</span>
+                        </div>
+                    </div>
+                    <div class="col-span-2 sm:col-span-1 bg-night-800/90 p-4 rounded-2xl border border-gray-800 text-center">
+                        <span class="text-xs text-gray-400 font-semibold block">自律神経バランス</span>
+                        <div id="resAutonomicText" class="text-sm font-extrabold text-emerald-400 mt-2.5">
+                            副交感神経が極めて優位
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Explanation & Actionable Advice -->
+                <div class="space-y-4 bg-rose-950/10 border border-rose-500/20 rounded-2xl p-5">
+                    <h3 class="text-xs sm:text-sm font-extrabold flex items-center gap-2 text-rose-300">
+                        <i class="fa-solid fa-notes-medical"></i> 生理学的状態の解釈
+                    </h3>
+                    <p id="resPhysiologyText" class="text-xs text-gray-300 leading-relaxed font-normal">
+                        睡眠中に心臓の負担がしっかりと下がり、副交感神経が優位に働いて自律神経が整っています。脳と肉体の疲労が十分にリセットされた理想的な回復状態です。
+                    </p>
+
+                    <h3 class="text-xs sm:text-sm font-extrabold flex items-center gap-2 text-amber-300 pt-2 border-t border-gray-800">
+                        <i class="fa-solid fa-lightbulb"></i> 今日のおすすめのアドバイス
+                    </h3>
+                    <p id="resAdviceText" class="text-xs text-gray-300 leading-relaxed font-normal">
+                        頭の回転や集中力、運動パフォーマンスが非常に高い状態です。重要なタスクや負荷の高いトレーニングに挑戦するのに最高の1日です。
+                    </p>
+                </div>
+
+                <!-- Bottom Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 mt-6">
+                    <button id="reScanBtn" class="flex-1 py-3.5 px-4 glass-card hover:bg-gray-800 rounded-xl font-bold text-xs text-gray-200 flex items-center justify-center gap-2 transition">
+                        <i class="fa-solid fa-rotate-right"></i> 再度測定する
+                    </button>
+                    <button id="saveRecordBtn" class="flex-1 py-3.5 px-4 bg-rose-600 hover:bg-rose-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 transition active:scale-95">
+                        <i class="fa-solid fa-bookmark"></i> 今朝の記録を保存する
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 4: 履歴表示画面 -->
+        <section id="historyView" class="hidden space-y-6">
+            <div class="glass-panel p-6 sm:p-8 rounded-3xl space-y-4 shadow-2xl">
+                <div class="flex items-center justify-between pb-4 border-b border-gray-800">
+                    <div>
+                        <h3 class="text-lg font-bold flex items-center gap-2 text-white">
+                            <i class="fa-solid fa-book-bookmark text-rose-400"></i> 過去の睡眠判定ログ
+                        </h3>
+                        <p class="text-xs text-gray-400 mt-0.5">保存された毎朝の心拍測定履歴</p>
+                    </div>
+                    <button id="clearHistoryBtn" class="text-xs text-rose-400 hover:text-rose-300 glass-card px-3 py-1.5 rounded-lg transition">
+                        全削除
+                    </button>
+                </div>
+
+                <!-- History Log Items Container -->
+                <div id="historyListContainer" class="space-y-3 max-h-96 overflow-y-auto pr-1">
+                    <!-- Dynamic rendering by JS -->
+                </div>
+
+                <div class="pt-2">
+                    <button id="backFromHistoryBtn" class="w-full py-3.5 glass-card rounded-xl font-bold text-xs text-gray-300 hover:text-white transition">
+                        ホームに戻る
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="appModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-panel bg-night-800 p-6 rounded-2xl max-w-sm w-full space-y-4 text-center border border-gray-700 shadow-2xl">
+            <div id="modalIconContainer" class="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-2xl">
+                <i id="modalIcon" class="fa-solid fa-circle-info"></i>
+            </div>
+            <h3 id="modalTitle" class="font-bold text-base text-white">お知らせ</h3>
+            <p id="modalMessage" class="text-xs text-gray-300 leading-relaxed">メッセージ文面</p>
+            <button id="modalCloseBtn" class="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition">
+                確認
+            </button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="w-full border-t border-gray-800/60 py-4 text-center text-[11px] text-gray-500">
+        SleepBeat • 光学脈波（rPPG）技術による簡易睡眠回復度チェッカー
+    </footer>
+
+    <script>
+        // --- アプリ基本設定 & 状態管理 ---
+        const CONFIG = {
+            SCAN_DURATION_SEC: 10,
+            STORAGE_KEY: 'morning_pulse_logs_jp_v1',
+            BASELINE_KEY: 'morning_pulse_baseline_jp_v1'
+        };
+
+        let state = {
+            baselineBpm: 60,
+            isScanning: false,
+            scanTimer: null,
+            timeRemaining: 10,
+            mediaStream: null,
+            rawRedSignal: [],
+            timestamps: [],
+            lastResult: null,
+            history: []
+        };
+
+        // DOM要素参照
+        const setupView = document.getElementById('setupView');
+        const scannerView = document.getElementById('scannerView');
+        const resultView = document.getElementById('resultView');
+        const historyView = document.getElementById('historyView');
+
+        const baselineBpmDisplay = document.getElementById('baselineBpmDisplay');
+        const webcamVideo = document.getElementById('webcamVideo');
+        const ppgCanvas = document.getElementById('ppgCanvas');
+        const ppgCtx = ppgCanvas.getContext('2d');
+        const countdownText = document.getElementById('countdownText');
+        const scanProgressBar = document.getElementById('scanProgressBar');
+        const heartOverlay = document.getElementById('heartOverlay');
+        const pulsingHeartIcon = document.getElementById('pulsingHeartIcon');
+        const scanStatusBadge = document.getElementById('scanStatusBadge');
+        const scanGuideMsg = document.getElementById('scanGuideMsg');
+        const signalQualityText = document.getElementById('signalQualityText');
+
+        // 初期化処理
+        window.addEventListener('DOMContentLoaded', () => {
+            loadSavedBaseline();
+            loadSavedHistory();
+            setupEventListeners();
+        });
+
+        function loadSavedBaseline() {
+            const saved = localStorage.getItem(CONFIG.BASELINE_KEY);
+            if (saved) {
+                state.baselineBpm = parseInt(saved, 10) || 60;
+            }
+            baselineBpmDisplay.innerText = state.baselineBpm;
+        }
+
+        function loadSavedHistory() {
+            try {
+                const saved = localStorage.getItem(CONFIG.STORAGE_KEY);
+                state.history = saved ? JSON.parse(saved) : [];
+            } catch (e) {
+                state.history = [];
+            }
+        }
+
+        function saveHistoryToStorage() {
+            localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(state.history));
+        }
+
+        function setupEventListeners() {
+            // 平常時心拍数（ベースライン）変更ボタン
+            document.getElementById('decreaseBpm').onclick = () => updateBaseline(-1);
+            document.getElementById('increaseBpm').onclick = () => updateBaseline(1);
+
+            // 画面遷移イベント
+            document.getElementById('startScanBtn').onclick = startCameraScan;
+            document.getElementById('cancelScanBtn').onclick = stopCameraScan;
+            document.getElementById('reScanBtn').onclick = () => {
+                showView('setupView');
+                startCameraScan();
+            };
+            document.getElementById('saveRecordBtn').onclick = saveCurrentResult;
+            document.getElementById('navHistoryBtn').onclick = () => {
+                renderHistoryList();
+                showView('historyView');
+            };
+            document.getElementById('backFromHistoryBtn').onclick = () => showView('setupView');
+            document.getElementById('clearHistoryBtn').onclick = clearHistory;
+
+            document.getElementById('modalCloseBtn').onclick = closeModal;
+        }
+
+        function updateBaseline(delta) {
+            state.baselineBpm = Math.max(40, Math.min(120, state.baselineBpm + delta));
+            baselineBpmDisplay.innerText = state.baselineBpm;
+            localStorage.setItem(CONFIG.BASELINE_KEY, state.baselineBpm);
+        }
+
+        function showView(viewId) {
+            [setupView, scannerView, resultView, historyView].forEach(v => v.classList.add('hidden'));
+            document.getElementById(viewId).classList.remove('hidden');
+        }
+
+        function showModal(title, message, iconClass = "fa-circle-info") {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalMessage').innerText = message;
+            document.getElementById('modalIcon').className = `fa-solid ${iconClass}`;
+            document.getElementById('appModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('appModal').classList.add('hidden');
+        }
+
+        // カメラアクセスの開始処理
+        async function startCameraScan() {
+            showView('scannerView');
+            state.rawRedSignal = [];
+            state.timestamps = [];
+            state.timeRemaining = CONFIG.SCAN_DURATION_SEC;
+            countdownText.innerText = `${state.timeRemaining}秒`;
+            scanProgressBar.style.width = '0%';
+            scanStatusBadge.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span> カメラを起動中...`;
+            scanGuideMsg.innerText = "カメラレンズ全体を指の腹でやさしく覆ってください。";
+
+            try {
+                // スマホなどの背面カメラを優先取得（無ければデフォルト）
+                const constraints = {
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        width: { ideal: 320 },
+                        height: { ideal: 240 }
+                    }
+                };
+                state.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+                webcamVideo.srcObject = state.mediaStream;
+                await webcamVideo.play();
+
+                scanStatusBadge.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span> 脈拍を検出中`;
+                state.isScanning = true;
+
+                // 信号抽出ループ & 10秒タイマーの開始
+                runSamplingLoop();
+                startCountdownTimer();
+
+            } catch (err) {
+                console.error("Camera access error:", err);
+                showModal("カメラの起動エラー", "カメラへのアクセスが拒否されたか、利用できません。ブラウザのカメラ権限を「許可」にして再試行してください。", "fa-video-slash");
+                showView('setupView');
+            }
+        }
+
+        function stopCameraScan() {
+            state.isScanning = false;
+            if (state.scanTimer) clearInterval(state.scanTimer);
+            if (state.mediaStream) {
+                state.mediaStream.getTracks().forEach(track => track.stop());
+                state.mediaStream = null;
+            }
+            showView('setupView');
+        }
+
+        function startCountdownTimer() {
+            const startTime = Date.now();
+            const totalMs = CONFIG.SCAN_DURATION_SEC * 1000;
+
+            state.scanTimer = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const remainingSec = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
+                
+                countdownText.innerText = `${remainingSec}秒`;
+                const progressPct = Math.min(100, (elapsed / totalMs) * 100);
+                scanProgressBar.style.width = `${progressPct}%`;
+
+                if (elapsed >= totalMs) {
+                    clearInterval(state.scanTimer);
+                    finishScanAndAnalyze();
+                }
+            }, 200);
+        }
+
+        // 解析用の小規模キャンバス準備
+        const processCanvas = document.createElement('canvas');
+        processCanvas.width = 40;
+        processCanvas.height = 30;
+        const processCtx = processCanvas.getContext('2d');
+
+        function runSamplingLoop() {
+            if (!state.isScanning) return;
+
+            if (webcamVideo.readyState === webcamVideo.HAVE_ENOUGH_DATA) {
+                processCtx.drawImage(webcamVideo, 0, 0, 40, 30);
+                const imgData = processCtx.getImageData(0, 0, 40, 30).data;
+
+                let redSum = 0;
+                let greenSum = 0;
+                const pixelCount = imgData.length / 4;
+
+                for (let i = 0; i < imgData.length; i += 4) {
+                    redSum += imgData[i];
+                    greenSum += imgData[i + 1];
+                }
+
+                const avgRed = redSum / pixelCount;
+                const avgGreen = greenSum / pixelCount;
+
+                // 指でカメラがしっかり覆われているかの判定（赤色成分の卓越）
+                const isFingerCovering = avgRed > 60 && (avgRed / (avgGreen + 1)) > 1.3;
+
+                if (isFingerCovering) {
+                    signalQualityText.innerText = "信号: 良好";
+                    signalQualityText.className = "text-emerald-400 font-bold";
+                    scanGuideMsg.innerText = "そのまま指を動かさずに固定してください。";
+                } else {
+                    signalQualityText.innerText = "信号: 微弱 (指を密着させてください)";
+                    signalQualityText.className = "text-amber-400 font-bold";
+                    scanGuideMsg.innerText = "カメラのレンズ全体を指でしっかり覆ってください。";
+                }
+
+                state.rawRedSignal.push(avgRed);
+                state.timestamps.push(Date.now());
+
+                // リアルタイム波形描画
+                drawLiveWaveform(state.rawRedSignal);
+            }
+
+            requestAnimationFrame(runSamplingLoop);
+        }
+
+        function drawLiveWaveform(buffer) {
+            ppgCtx.clearRect(0, 0, ppgCanvas.width, ppgCanvas.height);
+            if (buffer.length < 5) return;
+
+            const slice = buffer.slice(-150); // 直近約5秒分
+            const min = Math.min(...slice);
+            const max = Math.max(...slice);
+            const range = (max - min) || 1;
+
+            ppgCtx.beginPath();
+            ppgCtx.strokeStyle = '#ff4757';
+            ppgCtx.lineWidth = 2.5;
+
+            for (let i = 0; i < slice.length; i++) {
+                const x = (i / 150) * ppgCanvas.width;
+                const y = ppgCanvas.height - ((slice[i] - min) / range) * (ppgCanvas.height - 14) - 7;
+                if (i === 0) ppgCtx.moveTo(x, y);
+                else ppgCtx.lineTo(x, y);
+            }
+            ppgCtx.stroke();
+
+            // 脈拍ピークに合わせてハートの拡大アニメーション
+            const currVal = slice[slice.length - 1];
+            const prevVal = slice[slice.length - 2];
+            if (currVal > prevVal && (currVal - min) / range > 0.75) {
+                heartOverlay.style.opacity = '1';
+                pulsingHeartIcon.style.transform = 'scale(1.2)';
+            } else {
+                heartOverlay.style.opacity = '0.15';
+                pulsingHeartIcon.style.transform = 'scale(1.0)';
+            }
+        }
+
+        function finishScanAndAnalyze() {
+            state.isScanning = false;
+            if (state.mediaStream) {
+                state.mediaStream.getTracks().forEach(track => track.stop());
+            }
+
+            const raw = state.rawRedSignal;
+            if (raw.length < 100) {
+                showModal("計測データ不足", "十分なフレームが取得できませんでした。カメラを隠さず再度お試しください。", "fa-triangle-exclamation");
+                showView('setupView');
+                return;
+            }
+
+            // 実効FPSの算出
+            const durationSec = (state.timestamps[state.timestamps.length - 1] - state.timestamps[0]) / 1000;
+            const fps = raw.length / durationSec;
+
+            // 移動平均によるノイズ除去（スムージング）
+            const smoothed = [];
+            const windowSize = 3;
+            for (let i = 0; i < raw.length; i++) {
+                let sum = 0, count = 0;
+                for (let j = Math.max(0, i - windowSize); j <= Math.min(raw.length - 1, i + windowSize); j++) {
+                    sum += raw[j];
+                    count++;
+                }
+                smoothed.push(sum / count);
+            }
+
+            // ピーク検出（不応期による誤検知防止）
+            const minPeakDistance = Math.floor(fps * (60 / 180)); // 180BPMを上限とする間隔
+            const peaks = [];
+
+            for (let i = 1; i < smoothed.length - 1; i++) {
+                if (smoothed[i] > smoothed[i - 1] && smoothed[i] > smoothed[i + 1]) {
+                    if (peaks.length === 0 || (i - peaks[peaks.length - 1]) >= minPeakDistance) {
+                        peaks.push(i);
+                    }
+                }
+            }
+
+            if (peaks.length < 4) {
+                showModal("脈拍の検出失敗", "波形を正常に検出できませんでした。指のブレを抑え、明るい場所で再試行してください。", "fa-triangle-exclamation");
+                showView('setupView');
+                return;
+            }
+
+            // ピーク間隔の平均からBPM算出
+            let intervalSum = 0;
+            for (let i = 1; i < peaks.length; i++) {
+                intervalSum += (peaks[i] - peaks[i - 1]);
+            }
+            const avgIntervalFrames = intervalSum / (peaks.length - 1);
+            const calculatedBpm = Math.round((60 * fps) / avgIntervalFrames);
+
+            if (calculatedBpm < 40 || calculatedBpm > 180) {
+                showModal("測定範囲外のエラー", "心拍数が適切な数値範囲外になりました。動かずに指を密着させて再測定してください。", "fa-triangle-exclamation");
+                showView('setupView');
+                return;
+            }
+
+            // 睡眠の質を評価算出
+            const diagnosis = evaluateSleepQuality(calculatedBpm, state.baselineBpm);
+            state.lastResult = {
+                id: Date.now(),
+                timestamp: new Date().toISOString(),
+                bpm: calculatedBpm,
+                baseline: state.baselineBpm,
+                diff: calculatedBpm - state.baselineBpm,
+                ...diagnosis
+            };
+
+            renderResultView(state.lastResult);
+            showView('resultView');
+        }
+
+        // 睡眠の質 判定アルゴリズム (Delta = 測定BPM - ベースラインBPM)
+        function evaluateSleepQuality(measuredBpm, baselineBpm) {
+            const delta = measuredBpm - baselineBpm;
+
+            if (delta <= -2) {
+                return {
+                    stars: "★★★★★",
+                    gradeTitle: "🌟 最高の睡眠 (超回復)",
+                    statusText: "回復度: 最高 (Sランク)",
+                    autonomicText: "副交感神経が極めて優位",
+                    badgeColorClass: "text-emerald-400",
+                    borderClass: "border-emerald-500/30",
+                    bgClass: "bg-emerald-500/10",
+                    physiology: "心臓への負担がしっかり下がり、副交感神経が優位に働いて自律神経が整っています。脳と肉体の疲労が完璧にリセットされた最高の回復状態です。",
+                    advice: "副交感神経が優位で、自律神経がしっかり整っています。最高のコンディションで1日をスタートできます！集中力や運動パフォーマンスを発揮できる絶好の日です。"
+                };
+            } else if (delta >= -1 && delta <= 3) {
+                return {
+                    stars: "★★★★☆",
+                    gradeTitle: "😊 良い睡眠 (回復完了)",
+                    statusText: "回復度: 良好 (Aランク)",
+                    autonomicText: "自律神経バランス良好",
+                    badgeColorClass: "text-emerald-300",
+                    borderClass: "border-emerald-500/30",
+                    bgClass: "bg-emerald-500/10",
+                    physiology: "心拍数が平常時ベースラインとほぼ同等に落ち着いています。睡眠中のリカバリープロセスが正常に機能し、十分な休息が得られました。",
+                    advice: "十分に疲労が回復しています。本日も快適に過ごせる状態です。通常のトレーニングや仕事に意欲的に取り組んで問題ありません。"
+                };
+            } else if (delta >= 4 && delta <= 8) {
+                return {
+                    stars: "★★★☆☆",
+                    gradeTitle: "😐 通常・標準的",
+                    statusText: "回復度: 標準 (Bランク)",
+                    autonomicText: "やや交感神経の残存あり",
+                    badgeColorClass: "text-amber-300",
+                    borderClass: "border-amber-500/30",
+                    bgClass: "bg-amber-500/10",
+                    physiology: "心拍数が平常時よりわずかに高めです。浅い睡眠や夜間の軽い体動により、自律神経の回復がやや控えめな状態です。",
+                    advice: "標準的な回復状態です。無理をせずマイペースに過ごしましょう。適度な水分補給と軽いストレッチで血行を促すのがおすすめです。"
+                };
+            } else if (delta >= 9 && delta <= 14) {
+                return {
+                    stars: "★★☆☆☆",
+                    gradeTitle: "疲労蓄積気味",
+                    statusText: "回復度: 注意 (Cランク)",
+                    autonomicText: "交感神経が緊張状態",
+                    badgeColorClass: "text-amber-400",
+                    borderClass: "border-amber-500/30",
+                    bgClass: "bg-amber-500/10",
+                    physiology: "今朝の心拍数が通常より顕著に高くなっています。就寝前の遅い食事、スマホの光、あるいは蓄積疲労によって交感神経が緊張したまま朝を迎えています。",
+                    advice: "自律神経が緊張状態または疲労が残っている可能性があります。カフェインを控えめにし、今日は無理な残業を避けて早めの就寝を心がけましょう。"
+                };
+            } else {
+                return {
+                    stars: "★☆☆☆☆",
+                    gradeTitle: "🚨 要注意・要休息",
+                    statusText: "回復度: 不足 (Dランク)",
+                    autonomicText: "強い交感神経優位・負荷大",
+                    badgeColorClass: "text-rose-400",
+                    borderClass: "border-rose-500/30",
+                    bgClass: "bg-rose-500/10",
+                    physiology: "心拍数が平常時より+15 BPM以上も跳ね上がっています。アルコール、激しい睡眠不足、体調不良の前兆、または強い精神的ストレスが影響している可能性があります。",
+                    advice: "強い疲労感やストレス、睡眠不足の影響が出ています。今日は無理な運動や長時間の残業を避け、温かい入浴をしてリラックスした1日を過ごしましょう。"
+                };
+            }
+        }
+
+        // 診断結果画面のレンダリング
+        function renderResultView(res) {
+            document.getElementById('resSleepGradeTitle').innerText = res.gradeTitle;
+            
+            const dateObj = new Date(res.timestamp);
+            document.getElementById('resTimestamp').innerText = `計測日時: ${dateObj.toLocaleDateString('ja-JP')} ${dateObj.toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})}`;
+
+            const resBadgeContainer = document.getElementById('resBadgeContainer');
+            resBadgeContainer.className = `flex items-center gap-3 px-5 py-3 rounded-2xl ${res.bgClass} border ${res.borderClass}`;
+
+            const resStarDisplay = document.getElementById('resStarDisplay');
+            resStarDisplay.innerText = res.stars;
+            resStarDisplay.className = `text-xl font-black ${res.badgeColorClass}`;
+
+            document.getElementById('resGradeStatus').innerText = res.statusText;
+            
+            const diffSign = res.diff > 0 ? `+${res.diff}` : `${res.diff}`;
+            document.getElementById('resBpmDiffText').innerText = `平常時より ${diffSign} BPM`;
+
+            document.getElementById('resMeasuredBpm').innerText = res.bpm;
+            document.getElementById('resBaselineBpm').innerText = res.baseline;
+            document.getElementById('resAutonomicText').innerText = res.autonomicText;
+
+            document.getElementById('resPhysiologyText').innerText = res.physiology;
+            document.getElementById('resAdviceText').innerText = res.advice;
+        }
+
+        // 今朝の記録保存処理
+        function saveCurrentResult() {
+            if (!state.lastResult) return;
+
+            const exists = state.history.some(item => item.id === state.lastResult.id);
+            if (!exists) {
+                state.history.unshift(state.lastResult);
+                saveHistoryToStorage();
+                showModal("保存完了", "今朝の睡眠判定ログを保存しました。", "fa-circle-check");
+            } else {
+                showModal("保存済み", "この計測結果はすでに履歴に保存されています。", "fa-bookmark");
+            }
+        }
+
+        // 履歴一覧の描画
+        function renderHistoryList() {
+            const container = document.getElementById('historyListContainer');
+            container.innerHTML = '';
+
+            if (state.history.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-10 text-gray-500 text-xs">
+                        <i class="fa-solid fa-moon text-3xl mb-3 text-gray-600 block"></i>
+                        まだ測定履歴がありません。毎朝の心拍数を測定してみましょう！
+                    </div>
+                `;
+                return;
+            }
+
+            state.history.forEach(item => {
+                const dateObj = new Date(item.timestamp);
+                const dateStr = `${dateObj.toLocaleDateString('ja-JP')} ${dateObj.toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})}`;
+                const diffSign = item.diff > 0 ? `+${item.diff}` : `${item.diff}`;
+
+                const card = document.createElement('div');
+                card.className = "bg-night-800/90 border border-gray-800 p-3.5 rounded-2xl flex items-center justify-between shadow-sm";
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="px-2.5 py-1.5 rounded-xl ${item.bgClass} ${item.badgeColorClass} font-black text-xs shrink-0">
+                            ${item.stars}
+                        </div>
+                        <div>
+                            <div class="font-bold text-xs text-gray-200">${item.gradeTitle}</div>
+                            <div class="text-[10px] text-gray-400 mt-0.5">${dateStr}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm font-black text-rose-400">${item.bpm} <span class="text-[10px] text-gray-500 font-bold">BPM</span></div>
+                        <div class="text-[10px] text-gray-400">${diffSign} (基準: ${item.baseline})</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function clearHistory() {
+            if (confirm("これまでの測定履歴をすべて削除しますか？")) {
+                state.history = [];
+                saveHistoryToStorage();
+                renderHistoryList();
+            }
+        }
+    </script>
+</body>
+</html>
